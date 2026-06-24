@@ -6,13 +6,10 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.state.PreferencesGlanceStateDefinition
-import com.example.sobert.data.Streak
-import com.example.sobert.data.StreakRepository
-import com.example.sobert.data.dataStore
+import com.example.sobert.data.*
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import androidx.datastore.preferences.core.Preferences
 
 class AdvanceFrameCallback : ActionCallback {
@@ -22,45 +19,65 @@ class AdvanceFrameCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         val widget = SobrietyWidget()
-        
-        val mainPrefs = context.dataStore.data.first()
-        val streaksJson = mainPrefs[StreakRepository.STREAKS_KEY]
-        
-        val streaks: List<Streak> = if (streaksJson != null) {
-            val type = object : TypeToken<List<Streak>>() {}.type
-            Gson().fromJson(streaksJson, type)
-        } else {
-            emptyList()
-        }
-
         var frames: List<Int> = emptyList()
+        var statusFrames: List<Int> = emptyList()
         
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { glancePrefs ->
+            val streaksJson = glancePrefs[StreakRepository.STREAKS_KEY]
+            val checkOffsJson = glancePrefs[StreakRepository.CHECKOFFS_KEY]
+            
+            val streaks: List<Streak> = streaksJson?.let {
+                val type = object : TypeToken<List<Streak>>() {}.type
+                Gson().fromJson(it, type)
+            } ?: emptyList()
+
+            val checkOffs: List<CheckOff> = checkOffsJson?.let {
+                val type = object : TypeToken<List<CheckOff>>() {}.type
+                Gson().fromJson(it, type)
+            } ?: emptyList()
+
             val assignedId = glancePrefs[WIDGET_STREAK_ID_KEY]
-            val selectedId = assignedId ?: mainPrefs[StreakRepository.SELECTED_STREAK_ID_KEY]
+            val selectedId = assignedId ?: glancePrefs[StreakRepository.SELECTED_STREAK_ID_KEY]
             
-            val selectedStreak = streaks.find { it.id == selectedId } ?: streaks.firstOrNull { it.isEnabled }
+            val selectedStreak = streaks.find { it.id == selectedId }
+            val selectedCheckOff = if (selectedStreak == null) checkOffs.find { it.id == selectedId } else null
             
-            if (selectedStreak != null) {
-                val selectedIcon = selectedStreak.selectedIcon
-                frames = selectedIcon?.fileNames?.mapNotNull { name ->
-                    val resId = context.resources.getIdentifier(name, "drawable", context.packageName)
-                    if (resId != 0) resId else null
-                } ?: emptyList()
+            val item = selectedStreak ?: selectedCheckOff ?: streaks.firstOrNull { it.isEnabled } ?: checkOffs.firstOrNull { it.isEnabled }
+            
+            if (item != null) {
+                when (item) {
+                    is Streak -> {
+                        frames = getFrames(context, item.selectedIcon)
+                    }
+                    is CheckOff -> {
+                        frames = getFrames(context, item.selectedIcon)
+                        val statusIcon = if (item.isCompletedToday) item.selectedTick else item.selectedCross
+                        statusFrames = getFrames(context, statusIcon)
+                    }
+                }
             }
             glancePrefs
         }
 
-        if (frames.size <= 1) return
+        val maxFrames = maxOf(frames.size, statusFrames.size)
+        if (maxFrames <= 1) return
 
-        for (i in frames.indices) {
+        for (i in 0 until maxFrames) {
             updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
                 prefs.toMutablePreferences().apply {
-                    this[FRAME_INDEX_KEY] = i
+                    if (frames.isNotEmpty()) this[FRAME_INDEX_KEY] = i % frames.size
+                    if (statusFrames.isNotEmpty()) this[STATUS_FRAME_INDEX_KEY] = i % statusFrames.size
                 }
             }
             widget.update(context, glanceId)
             delay(60)
         }
+    }
+
+    private fun getFrames(context: Context, option: IconOption?): List<Int> {
+        return option?.fileNames?.mapNotNull { name ->
+            val resId = context.resources.getIdentifier(name, "drawable", context.packageName)
+            if (resId != 0) resId else null
+        } ?: emptyList()
     }
 }

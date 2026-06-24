@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Fish Oil",
+    "iconFiles": [["fishoil_100"]],
+    "tickIconFiles": [["tick_100"],["tick_200"],["tick_300"],["tick_400"]],
+    "crossIconFiles": [["cross_100"],["cross_200"],["cross_300"],["cross_400"]]
+  },
+  {
+    "title": "Magnesium",
+    "iconFiles": [["magnesium_100"]],
+    "tickIconFiles": [["tick_100"],["tick_200"],["tick_300"],["tick_400"]],
+    "crossIconFiles": [["cross_100"],["cross_200"],["cross_300"],["cross_400"]]
+  },
+  {
+    "title": "Zinc",
+    "iconFiles": [["zinc_100"]],
+    "tickIconFiles": [["tick_100"],["tick_200"],["tick_300"],["tick_400"]],
+    "crossIconFiles": [["cross_100"],["cross_200"],["cross_300"],["cross_400"]]
+  }
+]

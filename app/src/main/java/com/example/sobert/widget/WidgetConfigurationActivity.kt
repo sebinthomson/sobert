@@ -21,7 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.sobert.data.StreakRepository
 import com.example.sobert.ui.theme.SobertTheme
 import kotlinx.coroutines.launch
-import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.flow.combine
 
 class WidgetConfigurationActivity : ComponentActivity() {
 
@@ -29,7 +29,6 @@ class WidgetConfigurationActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setResult(RESULT_CANCELED)
 
         val intent = intent
@@ -51,22 +50,22 @@ class WidgetConfigurationActivity : ComponentActivity() {
             SobertTheme {
                 ConfigurationScreen(
                     repository = repository,
-                    onStreakSelected = { streakId ->
-                        handleStreakSelected(streakId)
+                    onItemSelected = { id ->
+                        handleItemSelected(id)
                     }
                 )
             }
         }
     }
 
-    private fun handleStreakSelected(streakId: String) {
+    private fun handleItemSelected(id: String) {
         lifecycleScope.launch {
             val manager = GlanceAppWidgetManager(applicationContext)
             val glanceId = manager.getGlanceIdBy(appWidgetId)
             
             updateAppWidgetState(applicationContext, PreferencesGlanceStateDefinition, glanceId) { prefs ->
                 prefs.toMutablePreferences().apply {
-                    this[WIDGET_STREAK_ID_KEY] = streakId
+                    this[WIDGET_STREAK_ID_KEY] = id
                 }
             }
             
@@ -83,27 +82,29 @@ class WidgetConfigurationActivity : ComponentActivity() {
 @Composable
 fun ConfigurationScreen(
     repository: StreakRepository,
-    onStreakSelected: (String) -> Unit
+    onItemSelected: (String) -> Unit
 ) {
-    val streaks by repository.streaksFlow.collectAsState(initial = emptyList())
-    val enabledStreaks = streaks.filter { it.isEnabled }
+    val items by combine(repository.streaksFlow, repository.checkOffsFlow) { streaks, checkOffs ->
+        (streaks.filter { it.isEnabled }.map { it.id to it.name } + 
+         checkOffs.filter { it.isEnabled }.map { it.id to it.name })
+    }.collectAsState(initial = emptyList())
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Select a streak for this widget",
+                text = "Select a tracker for this widget",
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            if (enabledStreaks.isEmpty()) {
-                Text("No enabled streaks found. Please enable a streak in the app first.")
+            if (items.isEmpty()) {
+                Text("No enabled trackers found. Please enable a tracker in the app first.")
             } else {
                 LazyColumn {
-                    items(enabledStreaks) { streak ->
+                    items(items) { (id, name) ->
                         ListItem(
-                            headlineContent = { Text(streak.name) },
-                            modifier = Modifier.clickable { onStreakSelected(streak.id) }
+                            headlineContent = { Text(name) },
+                            modifier = Modifier.clickable { onItemSelected(id) }
                         )
                         HorizontalDivider()
                     }

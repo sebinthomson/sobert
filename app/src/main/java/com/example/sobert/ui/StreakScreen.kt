@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PushPin
@@ -27,8 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sobert.R
-import com.example.sobert.data.Streak
-import com.example.sobert.data.UpdateMode
+import com.example.sobert.data.*
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -42,23 +43,23 @@ fun StreakScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var streakToEdit by remember { mutableStateOf<Streak?>(null) }
+    var checkOffToEdit by remember { mutableStateOf<CheckOff?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(title = { Text("My Streaks") })
+            TopAppBar(title = { Text("My Trackers") })
         }
     ) { padding ->
-        if (uiState.streaks.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (uiState.streaks.isNotEmpty()) {
+                item {
+                    Text("Streaks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
                 items(uiState.streaks) { streak ->
                     StreakItem(
                         streak = streak,
@@ -69,6 +70,24 @@ fun StreakScreen(
                         onCheckIn = { viewModel.checkIn(streak) },
                         onEdit = { streakToEdit = streak },
                         onPin = { viewModel.pinStreakWidget(streak.id) }
+                    )
+                }
+            }
+
+            if (uiState.checkOffs.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Daily Check-Offs", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                items(uiState.checkOffs) { checkOff ->
+                    CheckOffItem(
+                        checkOff = checkOff,
+                        isSelected = checkOff.id == uiState.selectedStreakId, // Sharing selection logic for widget
+                        onSelect = { if (checkOff.isEnabled) viewModel.selectStreakForWidget(checkOff.id) },
+                        onToggleCompletion = { viewModel.toggleCheckOffCompletion(checkOff) },
+                        onToggleEnabled = { enabled -> viewModel.toggleCheckOffEnabled(checkOff, enabled) },
+                        onEdit = { checkOffToEdit = checkOff },
+                        onPin = { viewModel.pinStreakWidget(checkOff.id) }
                     )
                 }
             }
@@ -91,6 +110,24 @@ fun StreakScreen(
                     widgetTitle = name
                 ))
                 streakToEdit = null
+            }
+        )
+    }
+
+    checkOffToEdit?.let { checkOff ->
+        CheckOffEditDialog(
+            checkOff = checkOff,
+            onDismiss = { checkOffToEdit = null },
+            onConfirm = { name, bgColor, txtColor, iconIdx, tickIdx, crossIdx ->
+                viewModel.updateCheckOff(checkOff.copy(
+                    name = name,
+                    widgetBgColor = bgColor,
+                    widgetTextColor = txtColor,
+                    selectedIconIndex = iconIdx,
+                    selectedTickIndex = tickIdx,
+                    selectedCrossIndex = crossIdx
+                ))
+                checkOffToEdit = null
             }
         )
     }
@@ -219,6 +256,114 @@ fun StreakItem(
 }
 
 @Composable
+fun CheckOffItem(
+    checkOff: CheckOff,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onToggleCompletion: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onPin: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (checkOff.isEnabled) 1f else 0.6f)
+            .clickable(enabled = checkOff.isEnabled) { onSelect() },
+        shape = RoundedCornerShape(16.dp),
+        border = if (isSelected && checkOff.isEnabled) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(checkOff.widgetBgColor).copy(alpha = 0.1f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = checkOff.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(checkOff.widgetTextColor)
+                    )
+                    Text(
+                        text = "Daily Check-Off",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                
+                Switch(
+                    checked = checkOff.isEnabled,
+                    onCheckedChange = onToggleEnabled,
+                    modifier = Modifier.scale(0.8f)
+                )
+            }
+
+            if (checkOff.isEnabled) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val statusText = if (checkOff.isCompletedToday) "Completed Today" else "Not Completed"
+                    val statusColor = if (checkOff.isCompletedToday) Color(0xFF4CAF50) else Color(0xFFF44336)
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (checkOff.isCompletedToday) Icons.Default.Check else Icons.Default.Close,
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = statusText, style = MaterialTheme.typography.titleMedium, color = statusColor)
+                    }
+
+                    Button(
+                        onClick = onToggleCompletion,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (checkOff.isCompletedToday) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(if (checkOff.isCompletedToday) "Undo" else "Check Off")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSelected) {
+                        Text(
+                            "Selected for Widget",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    IconButton(onClick = onPin) {
+                        Icon(Icons.Default.PushPin, contentDescription = "Pin to Home")
+                    }
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun Modifier.scale(scale: Float) = this.then(
     Modifier.layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
@@ -244,8 +389,6 @@ fun StreakEditDialog(
     var selectedIconIndex by remember { mutableStateOf(streak.selectedIconIndex) }
     var showDatePicker by remember { mutableStateOf(false) }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
-    
     val colors = listOf(
         0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFFF44336.toInt(),
         0xFF4CAF50.toInt(), 0xFF2196F3.toInt(), 0xFFFFEB3B.toInt(),
@@ -310,41 +453,12 @@ fun StreakEditDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             streak.iconOptions.forEachIndexed { index, option ->
-                                // Show the first frame as preview
-                                val firstFrame = option.fileNames.firstOrNull()
-                                val id = context.resources.getIdentifier(firstFrame, "drawable", context.packageName)
-                                if (id != 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(bgColor))
-                                            .border(
-                                                width = if (selectedIconIndex == index) 2.dp else 1.dp,
-                                                color = if (selectedIconIndex == index) MaterialTheme.colorScheme.primary else Color.LightGray,
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
-                                            .clickable { selectedIconIndex = index }
-                                            .padding(4.dp)
-                                    ) {
-                                        IconSetPreview(
-                                            fileNames = option.fileNames,
-                                            isAnimated = option.isAnimated && selectedIconIndex == index
-                                        )
-                                        
-                                        if (option.isAnimated) {
-                                            Text(
-                                                "GIF", 
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomEnd)
-                                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 2.dp),
-                                                color = Color.White,
-                                                fontSize = 8.sp
-                                            )
-                                        }
-                                    }
-                                }
+                                IconSetOption(
+                                    option = option,
+                                    isSelected = selectedIconIndex == index,
+                                    bgColor = bgColor,
+                                    onClick = { selectedIconIndex = index }
+                                )
                             }
                         }
                     }
@@ -404,6 +518,136 @@ fun StreakEditDialog(
             }
         ) {
             DatePicker(state = datePickerState)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckOffEditDialog(
+    checkOff: CheckOff,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int, Int, Int, Int, Int) -> Unit
+) {
+    var name by remember { mutableStateOf(checkOff.name) }
+    var bgColor by remember { mutableStateOf(checkOff.widgetBgColor) }
+    var txtColor by remember { mutableStateOf(checkOff.widgetTextColor) }
+    var iconIdx by remember { mutableStateOf(checkOff.selectedIconIndex) }
+    var tickIdx by remember { mutableStateOf(checkOff.selectedTickIndex) }
+    var crossIdx by remember { mutableStateOf(checkOff.selectedCrossIndex) }
+
+    val colors = listOf(
+        0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFFF44336.toInt(),
+        0xFF4CAF50.toInt(), 0xFF2196F3.toInt(), 0xFFFFEB3B.toInt(),
+        0xFFFF9800.toInt(), 0xFF9C27B0.toInt()
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit ${checkOff.name}") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Display Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                item {
+                    Text("Base Icon", style = MaterialTheme.typography.labelLarge)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        checkOff.iconOptions.forEachIndexed { index, option ->
+                            IconSetOption(option, iconIdx == index, bgColor) { iconIdx = index }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Tick Icon (Completed)", style = MaterialTheme.typography.labelLarge)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        checkOff.tickIconOptions.forEachIndexed { index, option ->
+                            IconSetOption(option, tickIdx == index, bgColor) { tickIdx = index }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Cross Icon (Pending)", style = MaterialTheme.typography.labelLarge)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        checkOff.crossIconOptions.forEachIndexed { index, option ->
+                            IconSetOption(option, crossIdx == index, bgColor) { crossIdx = index }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Background Color", style = MaterialTheme.typography.labelLarge)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        colors.forEach { color ->
+                            ColorCircle(color, bgColor == color) { bgColor = color }
+                        }
+                    }
+                }
+
+                item {
+                    Text("Text Color", style = MaterialTheme.typography.labelLarge)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        colors.forEach { color ->
+                            ColorCircle(color, txtColor == color) { txtColor = color }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { if (name.isNotBlank()) onConfirm(name, bgColor, txtColor, iconIdx, tickIdx, crossIdx) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun IconSetOption(
+    option: IconOption,
+    isSelected: Boolean,
+    bgColor: Int,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(bgColor))
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable { onClick() }
+            .padding(4.dp)
+    ) {
+        IconSetPreview(
+            fileNames = option.fileNames,
+            isAnimated = option.isAnimated && isSelected
+        )
+        
+        if (option.isAnimated) {
+            Text(
+                "GIF", 
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
+                    .padding(horizontal = 2.dp),
+                color = Color.White,
+                fontSize = 8.sp
+            )
         }
     }
 }
