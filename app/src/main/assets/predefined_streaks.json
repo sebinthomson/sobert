@@ -1,0 +1,25 @@
+[
+  {
+    "title": "Sobriety",
+    "updateMode": "DAILY",
+    "iconFiles": [
+      ["sobriety_301", "sobriety_302", "sobriety_303", "sobriety_304", "sobriety_305", "sobriety_306", "sobriety_307", "sobriety_308", "sobriety_309", "sobriety_310", "sobriety_311", "sobriety_312", "sobriety_313", "sobriety_314"],["sobriety_100"],["sobriety_200"]
+    ]
+  },
+  {
+    "title": "Gym Streak",
+    "updateMode": "MANUAL",
+    "iconFiles": [
+      ["gymstreak_100"],
+      ["gymstreak_200"]
+    ]
+  },
+  {
+    "title": "No Smoking",
+    "updateMode": "DAILY",
+    "iconFiles": [
+      ["nosmoking_100"],
+      ["nosmoking_200"]
+    ]
+  }
+]
